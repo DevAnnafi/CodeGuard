@@ -5,6 +5,9 @@ from models.review_response import ReviewResponse
 from models.issue import Issue
 from services.reviewer import run_review
 from utils.file_utils import detect_language, validate_file
+from fastapi.responses import StreamingResponse
+from services.exporter import generate_pdf
+import io
 
 router = APIRouter()
 
@@ -42,3 +45,14 @@ async def review_file(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/export")
+async def export_review(result: ReviewResponse, filename: str = "review"):
+    pdf_bytes = generate_pdf(result, filename)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=codeguard_{filename}.pdf"
+        }
+    )
