@@ -43,6 +43,7 @@ export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [mode, setMode] = useState<'paste' | 'upload'>('paste')
   const [dark, setDark] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -95,22 +96,42 @@ export default function Home() {
     ws.onclose = () => setStreaming(false)
   }
 
-  const bg       = d ? '#0f0f0d' : '#F5F2ED'
-  const surface  = d ? '#1a1a18' : '#ffffff'
-  const surfaceAlt = d ? '#222220' : '#F5F2ED'
-  const border   = d ? 'rgba(255,255,255,0.08)' : 'rgba(26,26,24,0.1)'
-  const borderHover = d ? 'rgba(255,255,255,0.16)' : 'rgba(26,26,24,0.25)'
-  const text     = d ? '#e8e5e0' : '#1a1a18'
-  const textMuted = d ? 'rgba(232,229,224,0.35)' : 'rgba(26,26,24,0.35)'
-  const textDim  = d ? 'rgba(232,229,224,0.18)' : 'rgba(26,26,24,0.18)'
-  const inputBg  = d ? 'rgba(255,255,255,0.05)' : 'rgba(26,26,24,0.04)'
-  const btnBg    = d ? '#e8e5e0' : '#1a1a18'
-  const btnText  = d ? '#0f0f0d' : '#F5F2ED'
-  const cardBg   = d ? '#1c1c1a' : '#ffffff'
-  const summaryBg = d ? '#e8e5e0' : '#1a1a18'
-  const summaryText = d ? '#1a1a18' : 'rgba(245,242,237,0.75)'
+  const exportPDF = async () => {
+    if (!result) return
+    setExporting(true)
+    try {
+      const res = await fetch(`http://localhost:8000/api/review/export?filename=${filename || 'review'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result)
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `codeguard_${filename || 'review'}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const bg         = d ? '#0f0f0d' : '#F5F2ED'
+  const border     = d ? 'rgba(255,255,255,0.08)' : 'rgba(26,26,24,0.1)'
+  const text       = d ? '#e8e5e0' : '#1a1a18'
+  const textMuted  = d ? 'rgba(232,229,224,0.35)' : 'rgba(26,26,24,0.35)'
+  const textDim    = d ? 'rgba(232,229,224,0.18)' : 'rgba(26,26,24,0.18)'
+  const inputBg    = d ? 'rgba(255,255,255,0.05)' : 'rgba(26,26,24,0.04)'
+  const btnBg      = d ? '#e8e5e0' : '#1a1a18'
+  const btnText    = d ? '#0f0f0d' : '#F5F2ED'
+  const cardBg     = d ? '#1c1c1a' : '#ffffff'
+  const summaryBg  = d ? '#e8e5e0' : '#1a1a18'
+  const summaryText  = d ? '#1a1a18' : 'rgba(245,242,237,0.75)'
   const summaryLabel = d ? 'rgba(26,26,24,0.45)' : 'rgba(245,242,237,0.35)'
-  const editorTheme = d ? 'vs-dark' : 'light'
+  const editorTheme  = d ? 'vs-dark' : 'light'
 
   return (
     <>
@@ -125,6 +146,7 @@ export default function Home() {
         @keyframes slideIn { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
         .finding-card { animation: slideIn 0.2s ease both; }
         .finding-card:hover { transform: translateX(2px) !important; }
+        .export-btn:hover { opacity: 0.7 !important; }
         input, select { outline: none; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -145,10 +167,9 @@ export default function Home() {
             <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, letterSpacing:'0.05em' }}>
               AI-POWERED SECURITY ANALYSIS
             </div>
-            {/* Dark mode toggle */}
             <button
               onClick={() => setDark(!d)}
-              style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background: inputBg, color:text, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', gap:6 }}
+              style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background:inputBg, color:text, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', gap:6 }}
             >
               {d ? '○ LIGHT' : '● DARK'}
             </button>
@@ -234,7 +255,7 @@ export default function Home() {
 
             <button onClick={startReview}
               disabled={streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)}
-              style={{ fontFamily:'DM Mono, monospace', fontSize:12, fontWeight:500, letterSpacing:'0.08em', padding:'13px 24px', background: btnBg, color: btnText, border:'none', borderRadius:10, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: (streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)) ? 0.35 : 1 }}>
+              style={{ fontFamily:'DM Mono, monospace', fontSize:12, fontWeight:500, letterSpacing:'0.08em', padding:'13px 24px', background:btnBg, color:btnText, border:'none', borderRadius:10, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: (streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)) ? 0.35 : 1 }}>
               {streaming
                 ? <><div style={{ width:12, height:12, border:`1.5px solid ${btnText}30`, borderTopColor:btnText, borderRadius:'50%', animation:'spin 0.7s linear infinite' }} /> ANALYZING</>
                 : '→ RUN ANALYSIS'}
@@ -276,9 +297,24 @@ export default function Home() {
                     <div style={{ fontSize:13, color:summaryText, lineHeight:1.65, fontWeight:300 }}>{result.summary}</div>
                   </div>
 
+                  {/* Findings header with export button */}
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
                     <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:textMuted, textTransform:'uppercase' }}>Findings</div>
-                    <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted }}>{result.findings.length} issue{result.findings.length !== 1 ? 's' : ''}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted }}>
+                        {result.findings.length} issue{result.findings.length !== 1 ? 's' : ''}
+                      </div>
+                      <button
+                        className="export-btn"
+                        onClick={exportPDF}
+                        disabled={exporting}
+                        style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.08em', padding:'5px 12px', borderRadius:6, border:`1px solid ${border}`, background:inputBg, color:text, cursor:'pointer', transition:'all 0.15s', display:'flex', alignItems:'center', gap:6, opacity: exporting ? 0.4 : 1 }}
+                      >
+                        {exporting
+                          ? <><div style={{ width:9, height:9, border:`1.5px solid ${text}30`, borderTopColor:text, borderRadius:'50%', animation:'spin 0.7s linear infinite' }} /> EXPORTING</>
+                          : '↓ EXPORT PDF'}
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>

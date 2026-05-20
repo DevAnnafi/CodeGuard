@@ -31,11 +31,12 @@ def generate_pdf(result: ReviewResponse, filename: str = "review") -> bytes:
 
     title_style = ParagraphStyle('title',
         fontName='Helvetica-Bold', fontSize=20,
-        textColor=colors.HexColor('#1a1a18'), spaceAfter=4
+        textColor=colors.HexColor('#1a1a18'), spaceAfter=0
     )
     subtitle_style = ParagraphStyle('subtitle',
         fontName='Helvetica', fontSize=10,
-        textColor=colors.HexColor('#888880'), spaceAfter=2
+        textColor=colors.HexColor('#888880'), spaceAfter=0,
+        spaceBefore=0
     )
     section_style = ParagraphStyle('section',
         fontName='Helvetica-Bold', fontSize=9,
@@ -59,8 +60,9 @@ def generate_pdf(result: ReviewResponse, filename: str = "review") -> bytes:
 
     # Header
     story.append(Paragraph("CODEGUARD", title_style))
+    story.append(Spacer(1, 3*mm))
     story.append(Paragraph(f"Security Analysis Report — {filename}", subtitle_style))
-    story.append(Spacer(1, 4*mm))
+    story.append(Spacer(1, 6*mm))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e0ddd8')))
     story.append(Spacer(1, 4*mm))
 
@@ -102,7 +104,6 @@ def generate_pdf(result: ReviewResponse, filename: str = "review") -> bytes:
         sev_color = SEVERITY_COLORS.get(finding.severity, colors.gray)
         line_info = f"  ·  line {finding.line}" if finding.line else ""
 
-        # Finding header row
         header_data = [[
             Paragraph(f"<b>{finding.severity.upper()}</b>", ParagraphStyle('sh', fontName='Helvetica-Bold', fontSize=9, textColor=sev_color)),
             Paragraph(f"{finding.category}{line_info}", mono_style),
