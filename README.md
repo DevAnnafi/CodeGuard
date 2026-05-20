@@ -1,4 +1,4 @@
-# 🧠 AI Code Reviewer
+# AI Code Reviewer
 
 An AI-powered code review platform that analyzes git diffs and provides **line-level security and quality feedback** in real-time through a VS Code–style interface.
 
@@ -282,8 +282,9 @@ Built to replicate and extend modern AI-assisted development tools like:
 
 ---
 
-## 👤 Author
+## Author
 
 Annafi Islam
 GitHub: https://github.com/DevAnnafi
-# AI_Code_Reviewer
+
+
