@@ -1,7 +1,11 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from services.prompt_builder import build_prompt, SYSTEM_PROMPT
 from integrations.claude_client import stream_review
+from services.history_service import save_review
 from models.review_request import ReviewRequest
+from models.review_response import ReviewResponse
+from models.issue import Issue
+from core.database import SessionLocal
 import json
 
 router = APIRouter()
@@ -29,10 +33,24 @@ async def websocket_review(websocket: WebSocket):
             raw = raw.rsplit("\n", 1)[0]
         raw = raw.strip()
 
-        data = json.loads(raw)
+        parsed = json.loads(raw)
+
+        # save to history
+        review_result = ReviewResponse(
+            findings=[Issue(**f) for f in parsed.get("findings", [])],
+            summary=parsed.get("summary", ""),
+            overall_severity=parsed.get("overall_severity", "info"),
+            language=request.language
+        )
+        db = SessionLocal()
+        try:
+            save_review(db, review_result, filename=request.filename, context=request.context)
+        finally:
+            db.close()
+
         await websocket.send_json({
             "type": "done",
-            "result": data
+            "result": parsed
         })
 
     except WebSocketDisconnect:

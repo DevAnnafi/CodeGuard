@@ -45,6 +45,9 @@ export default function Home() {
   const [dark, setDark] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'>('all')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [history, setHistory] = useState<any[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -121,6 +124,19 @@ export default function Home() {
     }
   }
 
+  const fetchHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const res = await fetch('http://localhost:8000/api/history/')
+      const data = await res.json()
+      setHistory(data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
   const bg           = d ? '#0f0f0d' : '#F5F2ED'
   const border       = d ? 'rgba(255,255,255,0.08)' : 'rgba(26,26,24,0.1)'
   const text         = d ? '#e8e5e0' : '#1a1a18'
@@ -146,10 +162,13 @@ export default function Home() {
         @keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 8px #22c55e}50%{opacity:0.5;box-shadow:0 0 3px #22c55e} }
         @keyframes spin { to{transform:rotate(360deg)} }
         @keyframes slideIn { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
+        @keyframes slideInRight { from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)} }
         .finding-card { animation: slideIn 0.2s ease both; }
         .finding-card:hover { transform: translateX(2px) !important; }
         .export-btn:hover { opacity: 0.7 !important; }
         .filter-pill:hover { opacity: 0.8 !important; }
+        .history-card:hover { border-color: ${d ? 'rgba(255,255,255,0.16)' : 'rgba(26,26,24,0.25)'} !important; }
+        .history-sidebar { animation: slideInRight 0.2s ease both; }
         input, select { outline: none; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -166,10 +185,16 @@ export default function Home() {
             <div style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 8px #22c55e', animation:'pulse 2s ease-in-out infinite' }} />
             CODEGUARD
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, letterSpacing:'0.05em' }}>
               AI-POWERED SECURITY ANALYSIS
             </div>
+            <button
+              onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) fetchHistory() }}
+              style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background: historyOpen ? btnBg : inputBg, color: historyOpen ? btnText : text, cursor:'pointer', transition:'all 0.2s' }}
+            >
+              ⌂ HISTORY
+            </button>
             <button
               onClick={() => setDark(!d)}
               style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background:inputBg, color:text, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', gap:6 }}
@@ -180,7 +205,7 @@ export default function Home() {
         </div>
 
         {/* Layout */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', height:'calc(100vh - 61px)', overflow:'hidden' }}>
+        <div style={{ position:'relative', display:'grid', gridTemplateColumns:'1fr 1fr', height:'calc(100vh - 61px)', overflow:'hidden' }}>
 
           {/* Left panel */}
           <div style={{ padding:'32px 40px', borderRight:`1px solid ${border}`, display:'flex', flexDirection:'column', gap:20, transition:'border-color 0.25s', height:'100%', overflowY:'auto' }}>
@@ -381,6 +406,63 @@ export default function Home() {
               )
             })()}
           </div>
+
+          {/* History sidebar */}
+          {historyOpen && (
+            <div className="history-sidebar" style={{ position:'absolute', top:0, right:0, width:380, height:'100%', background: d ? '#141412' : '#ffffff', borderLeft:`1px solid ${border}`, zIndex:50, display:'flex', flexDirection:'column', boxShadow:'-8px 0 32px rgba(0,0,0,0.1)' }}>
+              <div style={{ padding:'20px 24px', borderBottom:`1px solid ${border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.1em', color:textMuted, textTransform:'uppercase' }}>Review History</div>
+                <button onClick={() => setHistoryOpen(false)} style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, background:'transparent', border:'none', cursor:'pointer' }}>✕</button>
+              </div>
+              <div style={{ flex:1, overflowY:'auto', padding:'12px' }}>
+                {historyLoading && (
+                  <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, textAlign:'center', padding:'32px 0' }}>loading...</div>
+                )}
+                {!historyLoading && history.length === 0 && (
+                  <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, textAlign:'center', padding:'32px 0' }}>no reviews yet</div>
+                )}
+                {!historyLoading && history.map((h) => {
+                  const s = SEVERITY_CONFIG[h.overall_severity] ?? SEVERITY_CONFIG.info
+                  return (
+                    <div
+                      key={h.id}
+                      className="history-card"
+                      onClick={() => {
+                        setResult({
+                          findings: h.findings,
+                          summary: h.summary,
+                          overall_severity: h.overall_severity,
+                          language: h.language
+                        })
+                        setSeverityFilter('all')
+                        setHistoryOpen(false)
+                      }}
+                      style={{ padding:'14px', borderRadius:10, border:`1px solid ${border}`, marginBottom:8, cursor:'pointer', transition:'all 0.15s', background:inputBg }}
+                    >
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                        <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, color:text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>
+                          {h.filename || 'untitled'}
+                        </div>
+                        <span style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, padding:'2px 8px', borderRadius:20, border:`1px solid ${d ? s.darkBorder : s.border}`, color: d ? s.darkText : s.text, flexShrink:0 }}>
+                          {s.label}
+                        </span>
+                      </div>
+                      <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, color:textMuted, marginBottom:6 }}>
+                        {h.language} · {h.findings.length} issue{h.findings.length !== 1 ? 's' : ''}
+                      </div>
+                      <div style={{ fontSize:11, color:textMuted, lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const }}>
+                        {h.summary}
+                      </div>
+                      <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, color:textDim, marginTop:8 }}>
+                        {new Date(h.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </>
