@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str
     environment: str = "development"
     max_tokens: int = 4096
+    database_url: str = "postgresql://localhost/codeguard"
 
     class Config:
         env_file = ".env"
