@@ -44,6 +44,7 @@ export default function Home() {
   const [mode, setMode] = useState<'paste' | 'upload'>('paste')
   const [dark, setDark] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low' | 'info'>('all')
   const wsRef = useRef<WebSocket | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -70,6 +71,7 @@ export default function Home() {
     setResult(null)
     setRawChunks('')
     setStreaming(true)
+    setSeverityFilter('all')
 
     if (mode === 'upload' && uploadedFile) {
       const formData = new FormData()
@@ -119,16 +121,16 @@ export default function Home() {
     }
   }
 
-  const bg         = d ? '#0f0f0d' : '#F5F2ED'
-  const border     = d ? 'rgba(255,255,255,0.08)' : 'rgba(26,26,24,0.1)'
-  const text       = d ? '#e8e5e0' : '#1a1a18'
-  const textMuted  = d ? 'rgba(232,229,224,0.35)' : 'rgba(26,26,24,0.35)'
-  const textDim    = d ? 'rgba(232,229,224,0.18)' : 'rgba(26,26,24,0.18)'
-  const inputBg    = d ? 'rgba(255,255,255,0.05)' : 'rgba(26,26,24,0.04)'
-  const btnBg      = d ? '#e8e5e0' : '#1a1a18'
-  const btnText    = d ? '#0f0f0d' : '#F5F2ED'
-  const cardBg     = d ? '#1c1c1a' : '#ffffff'
-  const summaryBg  = d ? '#e8e5e0' : '#1a1a18'
+  const bg           = d ? '#0f0f0d' : '#F5F2ED'
+  const border       = d ? 'rgba(255,255,255,0.08)' : 'rgba(26,26,24,0.1)'
+  const text         = d ? '#e8e5e0' : '#1a1a18'
+  const textMuted    = d ? 'rgba(232,229,224,0.35)' : 'rgba(26,26,24,0.35)'
+  const textDim      = d ? 'rgba(232,229,224,0.18)' : 'rgba(26,26,24,0.18)'
+  const inputBg      = d ? 'rgba(255,255,255,0.05)' : 'rgba(26,26,24,0.04)'
+  const btnBg        = d ? '#e8e5e0' : '#1a1a18'
+  const btnText      = d ? '#0f0f0d' : '#F5F2ED'
+  const cardBg       = d ? '#1c1c1a' : '#ffffff'
+  const summaryBg    = d ? '#e8e5e0' : '#1a1a18'
   const summaryText  = d ? '#1a1a18' : 'rgba(245,242,237,0.75)'
   const summaryLabel = d ? 'rgba(26,26,24,0.45)' : 'rgba(245,242,237,0.35)'
   const editorTheme  = d ? 'vs-dark' : 'light'
@@ -147,6 +149,7 @@ export default function Home() {
         .finding-card { animation: slideIn 0.2s ease both; }
         .finding-card:hover { transform: translateX(2px) !important; }
         .export-btn:hover { opacity: 0.7 !important; }
+        .filter-pill:hover { opacity: 0.8 !important; }
         input, select { outline: none; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -285,8 +288,11 @@ export default function Home() {
 
             {result && (() => {
               const os = SEVERITY_CONFIG[result.overall_severity] ?? SEVERITY_CONFIG.info
+              const filteredFindings = result.findings.filter(f => severityFilter === 'all' || f.severity === severityFilter)
+
               return (
                 <>
+                  {/* Summary card */}
                   <div style={{ background:summaryBg, borderRadius:14, padding:24, marginBottom:20, transition:'background 0.25s' }}>
                     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
                       <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:summaryLabel, textTransform:'uppercase' }}>Analysis complete</div>
@@ -297,10 +303,10 @@ export default function Home() {
                     <div style={{ fontSize:13, color:summaryText, lineHeight:1.65, fontWeight:300 }}>{result.summary}</div>
                   </div>
 
-                  {/* Findings header with export button */}
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+                  {/* Findings header */}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
                     <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:textMuted, textTransform:'uppercase' }}>Findings</div>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted }}>
                         {result.findings.length} issue{result.findings.length !== 1 ? 's' : ''}
                       </div>
@@ -317,8 +323,38 @@ export default function Home() {
                     </div>
                   </div>
 
+                  {/* Severity filter pills */}
+                  <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+                    {(['all', 'critical', 'high', 'medium', 'low', 'info'] as const).map(sev => {
+                      const count = sev === 'all'
+                        ? result.findings.length
+                        : result.findings.filter(f => f.severity === sev).length
+                      if (sev !== 'all' && count === 0) return null
+                      const s = sev === 'all' ? null : SEVERITY_CONFIG[sev]
+                      const isActive = severityFilter === sev
+                      return (
+                        <button
+                          key={sev}
+                          className="filter-pill"
+                          onClick={() => setSeverityFilter(sev)}
+                          style={{
+                            fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500,
+                            letterSpacing:'0.08em', padding:'4px 10px', borderRadius:20,
+                            border:`1px solid ${isActive ? (s ? s.dot : border) : border}`,
+                            background: isActive ? (s ? `${s.dot}18` : inputBg) : 'transparent',
+                            color: isActive ? (s ? (d ? s.darkText : s.text) : text) : textMuted,
+                            cursor:'pointer', transition:'all 0.15s'
+                          }}
+                        >
+                          {sev.toUpperCase()} ({count})
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Findings list */}
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    {result.findings.map((f, i) => {
+                    {filteredFindings.map((f, i) => {
                       const s = SEVERITY_CONFIG[f.severity] ?? SEVERITY_CONFIG.info
                       return (
                         <div key={i} className="finding-card" style={{ background:cardBg, borderRadius:12, padding:'18px 20px', border:`1px solid ${border}`, transition:'border-color 0.15s, transform 0.15s, background 0.25s' }}>
@@ -335,6 +371,11 @@ export default function Home() {
                         </div>
                       )
                     })}
+                    {filteredFindings.length === 0 && (
+                      <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, textAlign:'center', padding:'32px 0' }}>
+                        no {severityFilter} findings
+                      </div>
+                    )}
                   </div>
                 </>
               )
