@@ -5,6 +5,7 @@ from app.api.routes_review import router as review_router
 from app.api.routes_ws import router as ws_router
 from app.api.routes_history import router as history_router
 from core.database import init_db
+from app.api.routes_auth import router as auth_router
 
 load_dotenv()
 
@@ -22,6 +23,7 @@ app.add_middleware(
 app.include_router(review_router, prefix="/api/review", tags=["review"])
 app.include_router(ws_router, tags=["websocket"])
 app.include_router(history_router, prefix="/api/history", tags=["history"])
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
 @app.get("/health")
 async def health():
