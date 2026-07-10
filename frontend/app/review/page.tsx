@@ -1,5 +1,6 @@
 'use client'
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Editor from '@monaco-editor/react'
 
 interface Finding {
@@ -32,6 +33,7 @@ const LANGUAGE_MAP: Record<string, string> = {
 }
 
 export default function Home() {
+  const router = useRouter()
   const [code, setCode] = useState('')
   const [language, setLanguage] = useState('python')
   const [filename, setFilename] = useState('')
@@ -48,10 +50,23 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [user, setUser] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const d = dark
+
+  useEffect(() => {
+    const token = localStorage.getItem('cg_token')
+    const username = localStorage.getItem('cg_username')
+    if (!token) {
+      router.push('/auth')
+      return
+    }
+    setUser(username)
+  }, [])
+
+  const getToken = () => localStorage.getItem('cg_token') ?? ''
 
   const handleFile = useCallback((file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
@@ -81,7 +96,11 @@ export default function Home() {
       formData.append('file', uploadedFile)
       if (context) formData.append('context', context)
       try {
-        const res = await fetch('http://localhost:8000/api/review/upload', { method: 'POST', body: formData })
+        const res = await fetch('http://localhost:8000/api/review/upload', {
+          method: 'POST',
+          body: formData,
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        })
         const data = await res.json()
         setResult({ ...data, language })
       } catch (e) { console.error(e) }
@@ -91,7 +110,10 @@ export default function Home() {
 
     const ws = new WebSocket('ws://localhost:8000/ws/review')
     wsRef.current = ws
-    ws.onopen = () => ws.send(JSON.stringify({ code, language, filename, context }))
+    ws.onopen = () => ws.send(JSON.stringify({
+      code, language, filename, context,
+      token: getToken()
+    }))
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'chunk') setRawChunks(prev => prev + data.content)
@@ -107,7 +129,7 @@ export default function Home() {
     try {
       const res = await fetch(`http://localhost:8000/api/review/export?filename=${filename || 'review'}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
         body: JSON.stringify(result)
       })
       const blob = await res.blob()
@@ -127,7 +149,9 @@ export default function Home() {
   const fetchHistory = async () => {
     setHistoryLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/history/')
+      const res = await fetch('http://localhost:8000/api/history/', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      })
       const data = await res.json()
       setHistory(data)
     } catch (e) {
@@ -135,6 +159,12 @@ export default function Home() {
     } finally {
       setHistoryLoading(false)
     }
+  }
+
+  const logout = () => {
+    localStorage.removeItem('cg_token')
+    localStorage.removeItem('cg_username')
+    router.push('/auth')
   }
 
   const bg           = d ? '#0f0f0d' : '#F5F2ED'
@@ -169,6 +199,7 @@ export default function Home() {
         .filter-pill:hover { opacity: 0.8 !important; }
         .history-card:hover { border-color: ${d ? 'rgba(255,255,255,0.16)' : 'rgba(26,26,24,0.25)'} !important; }
         .history-sidebar { animation: slideInRight 0.2s ease both; }
+        .logout-btn:hover { opacity: 0.7 !important; }
         input, select { outline: none; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -186,9 +217,11 @@ export default function Home() {
             CODEGUARD
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, letterSpacing:'0.05em' }}>
-              AI-POWERED SECURITY ANALYSIS
-            </div>
+            {user && (
+              <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, letterSpacing:'0.05em' }}>
+                {user}
+              </div>
+            )}
             <button
               onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) fetchHistory() }}
               style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background: historyOpen ? btnBg : inputBg, color: historyOpen ? btnText : text, cursor:'pointer', transition:'all 0.2s' }}
@@ -200,6 +233,13 @@ export default function Home() {
               style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background:inputBg, color:text, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', gap:6 }}
             >
               {d ? '○ LIGHT' : '● DARK'}
+            </button>
+            <button
+              className="logout-btn"
+              onClick={logout}
+              style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background:inputBg, color:text, cursor:'pointer', transition:'all 0.2s' }}
+            >
+              → LOGOUT
             </button>
           </div>
         </div>
@@ -317,7 +357,6 @@ export default function Home() {
 
               return (
                 <>
-                  {/* Summary card */}
                   <div style={{ background:summaryBg, borderRadius:14, padding:24, marginBottom:20, transition:'background 0.25s' }}>
                     <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
                       <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:summaryLabel, textTransform:'uppercase' }}>Analysis complete</div>
@@ -328,7 +367,6 @@ export default function Home() {
                     <div style={{ fontSize:13, color:summaryText, lineHeight:1.65, fontWeight:300 }}>{result.summary}</div>
                   </div>
 
-                  {/* Findings header */}
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
                     <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:textMuted, textTransform:'uppercase' }}>Findings</div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -348,7 +386,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Severity filter pills */}
                   <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
                     {(['all', 'critical', 'high', 'medium', 'low', 'info'] as const).map(sev => {
                       const count = sev === 'all'
@@ -377,7 +414,6 @@ export default function Home() {
                     })}
                   </div>
 
-                  {/* Findings list */}
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                     {filteredFindings.map((f, i) => {
                       const s = SEVERITY_CONFIG[f.severity] ?? SEVERITY_CONFIG.info
@@ -462,7 +498,6 @@ export default function Home() {
               </div>
             </div>
           )}
-
         </div>
       </div>
     </>
