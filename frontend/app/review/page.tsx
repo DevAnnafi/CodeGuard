@@ -51,6 +51,8 @@ export default function Home() {
   const [history, setHistory] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [user, setUser] = useState<string | null>(null)
+  const [usage, setUsage] = useState<{ remaining: number; limit: number; used: number } | null>(null)
+  const [rateLimited, setRateLimited] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -64,6 +66,7 @@ export default function Home() {
       return
     }
     setUser(username)
+    fetchUsage()
   }, [])
 
   const getToken = () => localStorage.getItem('cg_token') ?? ''
@@ -85,11 +88,24 @@ export default function Home() {
     if (file) handleFile(file)
   }, [handleFile])
 
+  const fetchUsage = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/review/usage', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      })
+      const data = await res.json()
+      setUsage(data)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   const startReview = async () => {
     setResult(null)
     setRawChunks('')
     setStreaming(true)
     setSeverityFilter('all')
+    setRateLimited(false)
 
     if (mode === 'upload' && uploadedFile) {
       const formData = new FormData()
@@ -101,8 +117,13 @@ export default function Home() {
           body: formData,
           headers: { 'Authorization': `Bearer ${getToken()}` }
         })
+        if (res.status === 429) {
+          setRateLimited(true)
+          return
+        }
         const data = await res.json()
         setResult({ ...data, language })
+        fetchUsage()
       } catch (e) { console.error(e) }
       finally { setStreaming(false) }
       return
@@ -117,7 +138,15 @@ export default function Home() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'chunk') setRawChunks(prev => prev + data.content)
-      else if (data.type === 'done') { setResult({ ...data.result, language }); setStreaming(false) }
+      else if (data.type === 'done') {
+        setResult({ ...data.result, language })
+        setStreaming(false)
+        fetchUsage()
+      }
+      else if (data.type === 'rate_limited') {
+        setRateLimited(true)
+        setStreaming(false)
+      }
       else if (data.type === 'error') { console.error(data.detail); setStreaming(false) }
     }
     ws.onclose = () => setStreaming(false)
@@ -222,6 +251,11 @@ export default function Home() {
                 {user}
               </div>
             )}
+            {usage && (
+              <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color: usage.remaining <= 1 ? '#ef4444' : textMuted, letterSpacing:'0.05em', padding:'6px 12px', borderRadius:20, border:`1px solid ${usage.remaining <= 1 ? 'rgba(239,68,68,0.3)' : border}`, background: usage.remaining <= 1 ? 'rgba(239,68,68,0.06)' : inputBg }}>
+                {usage.remaining}/{usage.limit} left today
+              </div>
+            )}
             <button
               onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) fetchHistory() }}
               style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.06em', padding:'6px 14px', borderRadius:20, border:`1px solid ${border}`, background: historyOpen ? btnBg : inputBg, color: historyOpen ? btnText : text, cursor:'pointer', transition:'all 0.2s' }}
@@ -250,7 +284,6 @@ export default function Home() {
           {/* Left panel */}
           <div style={{ padding:'32px 40px', borderRight:`1px solid ${border}`, display:'flex', flexDirection:'column', gap:20, transition:'border-color 0.25s', height:'100%', overflowY:'auto' }}>
 
-            {/* Mode toggle */}
             <div>
               <div style={{ fontFamily:'DM Mono, monospace', fontSize:10, fontWeight:500, letterSpacing:'0.12em', color:textMuted, textTransform:'uppercase', marginBottom:8 }}>Input mode</div>
               <div style={{ display:'flex', background:inputBg, borderRadius:8, padding:3, width:'fit-content', gap:2 }}>
@@ -322,20 +355,38 @@ export default function Home() {
               style={{ fontFamily:'DM Mono, monospace', fontSize:12, background:inputBg, border:`1px solid ${border}`, borderRadius:8, padding:'10px 14px', color:text, width:'100%', transition:'all 0.2s' }} />
 
             <button onClick={startReview}
-              disabled={streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)}
-              style={{ fontFamily:'DM Mono, monospace', fontSize:12, fontWeight:500, letterSpacing:'0.08em', padding:'13px 24px', background:btnBg, color:btnText, border:'none', borderRadius:10, cursor:'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: (streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)) ? 0.35 : 1 }}>
+              disabled={streaming || rateLimited || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code)}
+              style={{ fontFamily:'DM Mono, monospace', fontSize:12, fontWeight:500, letterSpacing:'0.08em', padding:'13px 24px', background: rateLimited ? 'rgba(239,68,68,0.12)' : btnBg, color: rateLimited ? '#ef4444' : btnText, border: rateLimited ? '1px solid rgba(239,68,68,0.3)' : 'none', borderRadius:10, cursor: rateLimited ? 'not-allowed' : 'pointer', transition:'all 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: (streaming || (mode==='upload' && !uploadedFile) || (mode==='paste' && !code && !rateLimited)) ? 0.35 : 1 }}>
               {streaming
                 ? <><div style={{ width:12, height:12, border:`1.5px solid ${btnText}30`, borderTopColor:btnText, borderRadius:'50%', animation:'spin 0.7s linear infinite' }} /> ANALYZING</>
+                : rateLimited ? '⊘ DAILY LIMIT REACHED'
                 : '→ RUN ANALYSIS'}
             </button>
           </div>
 
           {/* Right panel */}
           <div style={{ padding:'32px 40px', overflowY:'auto', height:'100%', background: d ? '#0f0f0d' : '#F5F2ED', transition:'background 0.25s' }}>
-            {!streaming && !result && (
+
+            {!streaming && !result && !rateLimited && (
               <div style={{ height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, opacity:0.25 }}>
                 <div style={{ fontFamily:'DM Mono, monospace', fontSize:32 }}>⌥</div>
                 <div style={{ fontFamily:'DM Mono, monospace', fontSize:12, color:text }}>awaiting input</div>
+              </div>
+            )}
+
+            {rateLimited && (
+              <div style={{ height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:'40px' }}>
+                <div style={{ fontFamily:'DM Mono, monospace', fontSize:32, opacity:0.4 }}>⊘</div>
+                <div style={{ fontFamily:'DM Mono, monospace', fontSize:13, fontWeight:500, color:text, textAlign:'center' }}>Daily limit reached</div>
+                <div style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:textMuted, textAlign:'center', lineHeight:1.7 }}>
+                  Free tier allows 5 reviews per day.<br />Upgrade to Pro for unlimited reviews.
+                </div>
+                <button
+                  onClick={() => router.push('/#pricing')}
+                  style={{ fontFamily:'DM Mono, monospace', fontSize:11, fontWeight:500, letterSpacing:'0.08em', padding:'10px 24px', borderRadius:10, border:'none', background:btnBg, color:btnText, cursor:'pointer', marginTop:8 }}
+                >
+                  → UPGRADE TO PRO
+                </button>
               </div>
             )}
 

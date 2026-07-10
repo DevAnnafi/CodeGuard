@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from services.prompt_builder import build_prompt, SYSTEM_PROMPT
 from integrations.claude_client import stream_review
 from services.history_service import save_review
+from services.rate_limit import is_rate_limited
 from models.review_request import ReviewRequest
 from models.review_response import ReviewResponse
 from models.issue import Issue
@@ -18,9 +19,7 @@ async def websocket_review(websocket: WebSocket):
     try:
         data = await websocket.receive_json()
         request = ReviewRequest(**{k: v for k, v in data.items() if k != 'token'})
-        prompt = build_prompt(request)
 
-        # decode user from token
         user_id = None
         token = data.get('token')
         if token:
@@ -28,6 +27,19 @@ async def websocket_review(websocket: WebSocket):
             if payload:
                 user_id = int(payload.get('sub'))
 
+        # check rate limit before streaming
+        db = SessionLocal()
+        try:
+            if user_id and is_rate_limited(db, user_id):
+                await websocket.send_json({
+                    "type": "rate_limited",
+                    "detail": "Daily limit reached. Free tier allows 5 reviews per day. Upgrade to Pro for unlimited reviews."
+                })
+                return
+        finally:
+            db.close()
+
+        prompt = build_prompt(request)
         raw = ""
         for chunk in stream_review(prompt, SYSTEM_PROMPT):
             raw += chunk
