@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from core.database import get_db
+from app.api.deps import get_current_user
 from services.history_service import get_history, get_review, delete_review
-from typing import List
+from models.user import User
 
 router = APIRouter()
 
 @router.get("/")
-def list_history(db: Session = Depends(get_db)):
-    records = get_history(db)
+def list_history(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    records = get_history(db, user_id=current_user.id)
     return [
         {
             "id": r.id,
@@ -24,9 +25,9 @@ def list_history(db: Session = Depends(get_db)):
     ]
 
 @router.get("/{review_id}")
-def get_single(review_id: int, db: Session = Depends(get_db)):
+def get_single(review_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     record = get_review(db, review_id)
-    if not record:
+    if not record or record.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Review not found")
     return {
         "id": record.id,
@@ -40,7 +41,7 @@ def get_single(review_id: int, db: Session = Depends(get_db)):
     }
 
 @router.delete("/{review_id}")
-def delete_single(review_id: int, db: Session = Depends(get_db)):
+def delete_single(review_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     success = delete_review(db, review_id)
     if not success:
         raise HTTPException(status_code=404, detail="Review not found")
